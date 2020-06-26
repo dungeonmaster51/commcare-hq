@@ -226,3 +226,9 @@ class CustomDataFieldsDefinition(SyncCouchToSQLMixin, QuickCachedDocumentMixin, 
     @classmethod
     def _migration_get_sql_model_class(cls):
         return SQLCustomDataFieldsDefinition
+
+
+class CustomDataFieldsProfile(models.Model):
+    name = models.CharField(max_length=126)
+    fields = JSONField(default=list, null=True)
+    definition = models.ForeignKey('SQLCustomDataFieldsDefinition', on_delete=models.CASCADE)
