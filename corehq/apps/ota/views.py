@@ -54,6 +54,7 @@ from corehq.form_processor.exceptions import CaseNotFound
 from corehq.form_processor.utils.xform import adjust_text_to_datetime
 from corehq.middleware import OPENROSA_VERSION_HEADER
 from corehq.util.quickcache import quickcache
+from custom.icds.view_utils import check_app_access
 
 from .models import DeviceLogRequest, MobileRecoveryMeasure, SerialIdBucket
 from .utils import (
@@ -258,6 +259,10 @@ def get_restore_response(domain, couch_user, app_id=None, since=None, version='1
     )
 
     app = get_app_cached(domain, app_id) if app_id else None
+
+    error_msg, status_code = check_app_access(domain, couch_user, app)
+    if error_msg:
+        return HttpResponse(_(error_msg), status=status_code), None
     restore_config = RestoreConfig(
         project=project,
         restore_user=restore_user,
@@ -296,17 +301,18 @@ def heartbeat(request, domain, app_build_id):
     app_id = request.GET.get('app_id', '')
     build_profile_id = request.GET.get('build_profile_id', '')
 
+    app = get_app_cached(domain, app_build_id)
     try:
         info = GlobalAppConfig.get_latest_version_info(domain, app_id, build_profile_id)
     except (Http404, AssertionError):
         # If it's not a valid master app id, find it by talking to couch
         notify_exception(request, 'Received an invalid heartbeat request')
-        app = get_app_cached(domain, app_build_id)
         info = GlobalAppConfig.get_latest_version_info(domain, app.master_id, build_profile_id)
 
     info["app_id"] = app_id
 
-    if not toggles.SKIP_UPDATING_USER_REPORTING_METADATA.enabled(domain):
+    error_in_access = check_app_access(domain, request.couch_user, app)
+    if not toggles.SKIP_UPDATING_USER_REPORTING_METADATA.enabled(domain) and not error_in_access[0]:
         update_user_reporting_data(app_build_id, app_id, build_profile_id, request.couch_user, request)
 
     if _should_force_log_submission(request):
