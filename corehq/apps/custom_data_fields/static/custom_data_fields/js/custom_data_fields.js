@@ -5,14 +5,16 @@ hqDefine('custom_data_fields/js/custom_data_fields', [
     'hqwebapp/js/assert_properties',
     'hqwebapp/js/initial_page_data',
     'hqwebapp/js/toggles',
-    'hqwebapp/js/knockout_bindings.ko',     // needed for sortable binding
+    'hqwebapp/js/ui_elements/ui-element-key-val-list',
+    'hqwebapp/js/knockout_bindings.ko',     // needed for sortable and jqueryElement bindings
 ], function (
     $,
     ko,
     _,
     assertProperties,
     initialPageData,
-    toggles
+    toggles,
+    uiElementKeyValueList
 ) {
     function Choice(choice) {
         var self = {};
@@ -112,10 +114,11 @@ hqDefine('custom_data_fields/js/custom_data_fields', [
     }
 
     function CustomDataFieldsModel(options) {
-        assertProperties.assertRequired(options, ['custom_fields']);
+        assertProperties.assertRequired(options, ['custom_fields', 'custom_fields_profiles']);
 
         var self = {};
         self.data_fields = ko.observableArray();
+        self.profiles = ko.observableArray();
         self.purge_existing = ko.observable(false);
         // The data field that the "remove field modal" currently refers to.
         self.modalField = ko.observable();
@@ -144,6 +147,13 @@ hqDefine('custom_data_fields/js/custom_data_fields', [
             self.removeField(self.modalField());
         };
 
+        self.addProfile = function () {
+            self.profiles.push(Profile({
+                name: '',
+                fields: {},
+            }));
+        };
+
         self.serialize = function () {
             var fields = [];
             var fieldsToRemove = [];
@@ -159,6 +169,18 @@ hqDefine('custom_data_fields/js/custom_data_fields', [
                 self.removeField(field);
             });
             return fields;
+        };
+
+        self.serializeProfiles = function () {
+            var profiles = []
+
+            _.each(self.profiles(), function (profile) {
+                profiles.push(profile.serialize());
+            });
+
+            // TODO: handle removing profiles
+
+            return profiles;
         };
 
         self.submitFields = function (fieldsForm) {
@@ -178,6 +200,11 @@ hqDefine('custom_data_fields/js/custom_data_fields', [
                 .appendTo(customDataFieldsForm);
 
             $('<input type="hidden">')
+                .attr('name', 'profiles')
+                .attr('value', JSON.stringify(self.serializeProfiles()))
+                .appendTo(customDataFieldsForm);
+
+            $('<input type="hidden">')
                 .attr('name', 'purge_existing')
                 .attr('value', self.purge_existing())
                 .appendTo(customDataFieldsForm);
@@ -193,6 +220,9 @@ hqDefine('custom_data_fields/js/custom_data_fields', [
                 $("#save-custom-fields").prop("disabled", false);
             });
         });
+        _.each(options.custom_fields_profiles, function (profile) {
+            self.profiles.push(Profile(profile))
+        });
 
         return self;
     }
@@ -200,8 +230,12 @@ hqDefine('custom_data_fields/js/custom_data_fields', [
     $(function () {
         var customDataFieldsModel = CustomDataFieldsModel({
             custom_fields: initialPageData.get('custom_fields'),
+            custom_fields_profiles: initialPageData.get('custom_fields_profiles'),
         });
         customDataFieldsModel.data_fields.subscribe(function () {
+            $("#save-custom-fields").prop("disabled", false);
+        });
+        customDataFieldsModel.profiles.subscribe(function () {
             $("#save-custom-fields").prop("disabled", false);
         });
 
