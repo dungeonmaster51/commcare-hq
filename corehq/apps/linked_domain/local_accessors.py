@@ -1,5 +1,5 @@
 from corehq import feature_previews, toggles
-from corehq.apps.custom_data_fields.models import SQLCustomDataFieldsDefinition
+from corehq.apps.custom_data_fields.models import CustomDataFieldsProfile, SQLCustomDataFieldsDefinition
 from corehq.apps.fixtures.dbaccessors import get_fixture_data_type_by_tag, get_fixture_items_for_data_type
 from corehq.apps.linked_domain.util import _clean_json
 from corehq.apps.locations.views import LocationFieldsView
@@ -22,7 +22,7 @@ def get_custom_data_models(domain, limit_types=None):
             continue
         model = SQLCustomDataFieldsDefinition.get(domain, field_view.field_type)
         if model:
-            fields[field_view.field_type] = [
+            fields[field_view.field_type]['fields'] = [
                 {
                     'slug': field.slug,
                     'is_required': field.is_required,
@@ -32,6 +32,14 @@ def get_custom_data_models(domain, limit_types=None):
                     'regex_msg': field.regex_msg,
                 } for field in model.get_fields()
             ]
+            if field_view.show_profiles:
+                fields[field_view.field_type]['profiles'] = [
+                    {
+                        'id': profile.id,
+                        'name': profile.name,
+                        'fields': profile.fields,
+                    } for profile in CustomDataFieldsProfile.objects.filter(definition=model)
+                ]
     return fields
 
 

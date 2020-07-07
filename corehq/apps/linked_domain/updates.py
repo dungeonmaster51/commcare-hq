@@ -103,7 +103,8 @@ def update_custom_data_models(domain_link, limit_types=None):
     else:
         master_results = local_custom_data_models(domain_link.master_domain, limit_types)
 
-    for field_type, field_definitions in master_results.items():
+    for field_type, data in master_results.items():
+        field_definitions = data.get('fields', [])
         model = SQLCustomDataFieldsDefinition.get_or_create(domain_link.linked_domain, field_type)
         model.set_fields([
             SQLField(
@@ -116,6 +117,9 @@ def update_custom_data_models(domain_link, limit_types=None):
             ) for field_def in field_definitions
         ])
         model.save()
+
+        profiles = data.get('profiles', [])
+        # TODO: overwrite profiles (based on name, using User Roles precedent)
 
 
 def update_fixture(domain_link, tag):
