@@ -51,6 +51,18 @@ class CustomDataFieldsForm(forms.Form):
                 errors.add(_("Key '{}' is a reserved word in Commcare.").format(slug))
         return errors
 
+    def verify_no_profiles_missing_fields(self, data_fields, profiles):
+        errors = set()
+        slugs = {field['slug'].lower()
+                 for field in data_fields if 'slug' in field}
+        for profile in profiles:
+            for field in json.loads(profile.get('fields', "{}")).keys():
+                if field not in slugs:
+                    errors.add(_("Profile '{}' contains '{}' which is not a known field.").format(
+                        profile['name'], field
+                    ))
+        return errors
+
     def clean_data_fields(self):
         raw_data_fields = json.loads(self.cleaned_data['data_fields'])
         errors = set()
@@ -83,12 +95,23 @@ class CustomDataFieldsForm(forms.Form):
             if profile_form.errors:
                 errors.update([error[0] for error in profile_form.errors.values()])
 
-        # TODO: validate
-
         if errors:
             raise ValidationError('<br/>'.join(sorted(errors)))
 
         return profiles
+
+    def clean(self):
+        cleaned_data = super().clean()
+        data_fields = self.cleaned_data.get('data_fields', [])
+        profiles = self.cleaned_data.get('profiles', [])
+
+        errors = set()
+        errors.update(self.verify_no_profiles_missing_fields(data_fields, profiles))
+
+        if errors:
+            raise ValidationError('<br/>'.join(sorted(errors)))
+
+        return cleaned_data
 
 
 class XmlSlugField(forms.SlugField):
