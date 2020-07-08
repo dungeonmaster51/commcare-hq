@@ -22,8 +22,11 @@
     <tbody data-bind="foreach: profiles">
       <tr>
         <td>
-          <!-- TODO: select2 here would be nice -->
           <input class="form-control" type="text" data-bind="value: name"/>
+          <!-- TODO: select2 here would be nice: this needs to go into the key/value modal, which is jQuery-only,
+          so perhaps attach an event to the modal opening that looks up fieldOptions and creates or refreshes each
+          select2? Also need an option to use selects instead of text inputs. -->
+          <!--select class="form-control" data-bind="select2: $root.fieldOptions, value: name"></select-->
         </td>
         <td data-bind="jqueryElement: $fields"></td>
         <td>

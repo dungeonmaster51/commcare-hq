@@ -7,6 +7,7 @@ hqDefine('custom_data_fields/js/custom_data_fields', [
     'hqwebapp/js/toggles',
     'hqwebapp/js/ui_elements/ui-element-key-val-list',
     'hqwebapp/js/knockout_bindings.ko',     // needed for sortable and jqueryElement bindings
+    'hqwebapp/js/select2_knockout_bindings.ko',
 ], function (
     $,
     ko,
@@ -156,6 +157,15 @@ hqDefine('custom_data_fields/js/custom_data_fields', [
         self.confirmRemoveModel = function () {
             self.removeModel(self.modalModel());
         };
+
+        self.fieldOptions = ko.computed(function () {
+            return _.map(self.data_fields(), function (f) {
+                return {
+                    id: f.slug(),
+                    text: f.label() || f.slug(),
+                };
+            });
+        });
 
         self.addProfile = function () {
             self.profiles.push(Profile({
