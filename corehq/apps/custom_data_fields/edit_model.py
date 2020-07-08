@@ -63,6 +63,28 @@ class CustomDataFieldsForm(forms.Form):
                     ))
         return errors
 
+    def verify_profiles_validate(self, data_fields, profiles):
+        errors = set()
+        fields_by_slug = {
+            field['slug']: SQLField(
+                slug=field.get('slug'),
+                is_required=field.get('is_required'),
+                label=field.get('label'),
+                choices=field.get('choices'),
+                regex=field.get('regex'),
+                regex_msg=field.get('regex_msg'),
+            ) for field in data_fields if field.get('slug')
+        }
+        for profile in profiles:
+            for key, value in json.loads(profile.get('fields', '{}')).items():
+                field = fields_by_slug.get(key)
+                if field:
+                    # Only one of these two will run, depending on field's data.
+                    # The other one will return early.
+                    errors.add(field.validate_choices(value))
+                    errors.add(field.validate_regex(value))
+        return {e for e in errors if e}
+
     def clean_data_fields(self):
         raw_data_fields = json.loads(self.cleaned_data['data_fields'])
         errors = set()
@@ -107,6 +129,7 @@ class CustomDataFieldsForm(forms.Form):
 
         errors = set()
         errors.update(self.verify_no_profiles_missing_fields(data_fields, profiles))
+        errors.update(self.verify_profiles_validate(data_fields, profiles))
 
         if errors:
             raise ValidationError('<br/>'.join(sorted(errors)))
