@@ -22,6 +22,7 @@
     <tbody data-bind="foreach: profiles">
       <tr>
         <td>
+          <input class="form-control" type="hidden" data-bind="value: id"/>
           <input class="form-control" type="text" data-bind="value: name"/>
           <!-- TODO: select2 here would be nice: this needs to go into the key/value modal, which is jQuery-only,
           so perhaps attach an event to the modal opening that looks up fieldOptions and creates or refreshes each

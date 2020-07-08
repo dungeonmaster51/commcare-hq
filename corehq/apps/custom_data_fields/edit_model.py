@@ -189,6 +189,10 @@ class CustomDataFieldsProfileForm(forms.Form):
     """
     Sub-form for editing a single profile
     """
+    id = forms.IntegerField(
+        required=False,
+        widget=forms.HiddenInput()
+    )
     name = forms.CharField(
         required=True,
         error_messages={'required': ugettext_lazy('A name is required for each profile.')}
@@ -257,16 +261,21 @@ class CustomDataModelMixin(object):
         if not self.show_profiles:
             return
 
-        # TODO: handle edits instead of clearing and re-adding all
-        for profile in self.get_profiles():
-            profile.delete()
         definition = self.get_definition()
+        seen = set()
         for profile in self.form.cleaned_data['profiles']:
-            CustomDataFieldsProfile(
-                definition=definition,
-                name=profile['name'],
-                fields=json.loads(profile['fields'])
-            ).save()
+            (obj, created) = CustomDataFieldsProfile.objects.update_or_create(
+                id=profile['id'], defaults={
+                    "definition": definition,
+                    "name": profile['name'],
+                    "fields": json.loads(profile['fields']),
+                }
+            )
+            seen.add(obj.id)
+
+        for profile in self.get_profiles():
+            if profile.id not in seen:
+                profile.delete()
 
     def get_field(self, field):
         if REGEX_FIELD_VALIDATION.enabled(self.domain) and field.get('regex'):
@@ -320,6 +329,7 @@ class CustomDataModelMixin(object):
                 ]),
                 'profiles': json.dumps([
                     {
+                        'id': profile.id,
                         'name': profile.name,
                         'fields': profile.fields,
                     } for profile in self.get_profiles()
