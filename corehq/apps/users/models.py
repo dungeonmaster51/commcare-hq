@@ -1026,6 +1026,7 @@ class CouchUser(Document, DjangoUserMixin, IsMemberOfMixin, EulaMixin):
     subscribed_to_commcare_users = BooleanProperty(default=False)
     announcements_seen = ListProperty()
     user_data = DictProperty()
+    user_data_profile_id = IntegerProperty()
     # This should not be set directly but using set_location method only
     location_id = StringProperty()
     assigned_location_ids = StringListProperty()

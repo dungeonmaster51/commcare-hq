@@ -16,6 +16,7 @@ from dimagi.utils.parsing import string_to_boolean
 from corehq import privileges
 from corehq.apps.accounting.utils import domain_has_privilege
 from corehq.apps.commtrack.util import get_supply_point_and_location
+from corehq.apps.custom_data_fields.models import CustomDataFieldsProfile, SQLCustomDataFieldsDefinition
 from corehq.apps.domain.models import Domain
 from corehq.apps.groups.models import Group
 from corehq.apps.locations.models import SQLLocation
@@ -41,7 +42,7 @@ required_headers = set(['username'])
 allowed_headers = set([
     'data', 'email', 'group', 'language', 'name', 'password', 'phone-number',
     'uncategorized_data', 'user_id', 'is_active', 'is_account_confirmed', 'send_confirmation_email',
-    'location_code', 'role',
+    'location_code', 'role', 'user_field_profile',
     'User IMEIs (read only)', 'registered_on (read only)', 'last_submission (read only)',
     'last_sync (read only)', 'web_user', 'remove_web_user'
 ]) | required_headers
@@ -287,6 +288,13 @@ def create_or_update_users_and_groups(domain, user_specs, upload_user, group_mem
     if can_assign_locations:
         location_cache = SiteCodeToLocationCache(domain)
 
+    from corehq.apps.users.views.mobile.custom_data_fields import UserFieldsView
+    definition = SQLCustomDataFieldsDefinition.get_or_create(domain, UserFieldsView.field_type)
+    profiles_by_name = {
+        profile.name: profile
+        for profile in CustomDataFieldsProfile.objects.filter(definition=definition)
+    }
+
     domain_obj = Domain.get_by_name(domain)
     allowed_group_names = [group.name for group in group_memoizer.groups]
     roles_by_name = {role.name: role for role in UserRole.by_domain(domain)}
@@ -326,6 +334,7 @@ def create_or_update_users_and_groups(domain, user_specs, upload_user, group_mem
             # ignore empty
             location_codes = [code for code in location_codes if code]
             role = row.get('role', None)
+            profile = row.get('profile', None)
             web_user = row.get('web_user')
 
             try:
@@ -371,7 +380,22 @@ def create_or_update_users_and_groups(domain, user_specs, upload_user, group_mem
                     user.add_phone_number(_fmt_phone(phone_number), default=True)
                 if name:
                     user.set_full_name(str(name))
+                profile_fields = {}
+                if profile:
+                    try:
+                        # TODO: test, and add tests
+                        user.user_data_profile_id = profiles_by_name[profile].id
+                        profile_fields = profiles_by_name[profile].fields
+                        user.user_data.update(profile_fields)
+                    except KeyError:
+                        raise UserUploadError(_("Could not find profile '{}'").format(profile))
                 if data:
+                    overlap = set(profile.fields.keys()).intersection({k for k, v in data.items() if v})
+                    if overlap:
+                        raise UserUploadError(
+                            _("Could not overwrite data set by profile: {}").format(", ".join(overlap))
+                        )
+                    # TODO: shouldn't this validate against definition?
                     user.user_data.update(data)
                 if uncategorized_data:
                     user.user_data.update(uncategorized_data)

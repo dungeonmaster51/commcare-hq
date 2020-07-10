@@ -7,8 +7,9 @@ from soil import DownloadBase
 from soil.util import expose_download, get_download_file_path
 
 from corehq import privileges
+from corehq import toggles
 from corehq.apps.accounting.utils import domain_has_privilege
-from corehq.apps.custom_data_fields.models import SQLCustomDataFieldsDefinition
+from corehq.apps.custom_data_fields.models import CustomDataFieldsProfile, SQLCustomDataFieldsDefinition
 from corehq.apps.groups.models import Group
 from corehq.apps.locations.models import SQLLocation
 from corehq.apps.user_importer.importer import BulkCacheBase, GroupMemoizer
@@ -38,7 +39,13 @@ def build_data_headers(keys, header_prefix='data'):
     )
 
 
-def parse_users(group_memoizer, domain, user_data_model, location_cache, user_filters, task, total_count):
+def parse_users(group_memoizer, domain, user_filters, task=None, total_count=None):
+    from corehq.apps.users.views.mobile.custom_data_fields import UserFieldsView
+    user_data_model = SQLCustomDataFieldsDefinition.get_or_create(
+        domain,
+        UserFieldsView.field_type
+    )
+    location_cache = LocationIdToSiteCodeCache(domain)
 
     def _get_group_names(user):
         return sorted([
@@ -58,6 +65,9 @@ def parse_users(group_memoizer, domain, user_data_model, location_cache, user_fi
             user_data_model.get_model_and_uncategorized(user.user_data)
         )
         role = user.get_role(domain)
+        profile = None
+        if user.user_data_profile_id and toggles.CUSTOM_DATA_FIELDS_PROFILES.enabled(domain):
+            profile = CustomDataFieldsProfile.objects.get(id=user.user_data_profile_id)
         activity = user.reporting_metadata
 
         location_codes = []
@@ -91,6 +101,7 @@ def parse_users(group_memoizer, domain, user_data_model, location_cache, user_fi
             'User IMEIs (read only)': _get_devices(user),
             'location_code': location_codes,
             'role': role.name if role else '',
+            'user_field_profile': profile.name if profile else '',
             'registered_on (read only)': _format_date(user.created_on),
             'last_submission (read only)': _format_date(activity.last_submission_for_user.submission_date),
             'last_sync (read only)': activity.last_sync_for_user.sync_date,
@@ -107,13 +118,17 @@ def parse_users(group_memoizer, domain, user_data_model, location_cache, user_fi
         unrecognized_user_data_keys.update(user_dict['uncategorized_data'])
         user_groups_length = max(user_groups_length, len(group_names))
         max_location_length = max(max_location_length, len(user_dict["location_code"]))
-        DownloadBase.set_progress(task, n, total_count)
+        if task:
+            DownloadBase.set_progress(task, n, total_count)
 
     user_headers = [
         'username', 'password', 'name', 'phone-number', 'email',
         'language', 'role', 'user_id', 'is_active', 'User IMEIs (read only)',
-        'registered_on (read only)', 'last_submission (read only)', 'last_sync (read only)']
+        'registered_on (read only)', 'last_submission (read only)', 'last_sync (read only)'
+    ]
 
+    if toggles.CUSTOM_DATA_FIELDS_PROFILES.enabled(domain):
+        user_headers += ['user_field_profile']
     user_data_fields = [f.slug for f in user_data_model.get_fields(include_system=False)]
     user_headers.extend(build_data_headers(user_data_fields))
     user_headers.extend(build_data_headers(
@@ -206,7 +221,6 @@ def _dump_xlsx_and_expose_download(filename, headers, rows, download_id, task, t
 
 
 def dump_users_and_groups(domain, download_id, user_filters, task):
-    from corehq.apps.users.views.mobile.custom_data_fields import UserFieldsView
 
     def _load_memoizer(domain):
         group_memoizer = GroupMemoizer(domain=domain)
@@ -224,21 +238,13 @@ def dump_users_and_groups(domain, download_id, user_filters, task):
         return group_memoizer
 
     group_memoizer = _load_memoizer(domain)
-    location_cache = LocationIdToSiteCodeCache(domain)
 
     users_groups_count = count_users_and_groups(domain, user_filters, group_memoizer)
     DownloadBase.set_progress(task, 0, users_groups_count)
 
-    user_data_model = SQLCustomDataFieldsDefinition.get_or_create(
-        domain,
-        UserFieldsView.field_type
-    )
-
     user_headers, user_rows = parse_users(
         group_memoizer,
         domain,
-        user_data_model,
-        location_cache,
         user_filters,
         task,
         users_groups_count,
